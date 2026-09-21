@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Protección Animal - Alcaldía de Guarenas</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0a4b7a 0%, #1e6fa8 100%);
+            font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            color: #fff; padding: 24px; text-align: center;
+        }
+        .logo {
+            width: 110px; height: 110px; border-radius: 22px;
+            background: #fff; padding: 12px; object-fit: contain;
+            margin-bottom: 18px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+        }
+        h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: 6px; }
+        p.sub { font-size: 0.8rem; opacity: 0.85; margin-bottom: 28px; }
+        .spinner {
+            width: 38px; height: 38px;
+            border: 3px solid rgba(255,255,255,0.28);
+            border-top-color: #fff; border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .estado { margin-top: 16px; font-size: 0.75rem; opacity: 0.85; min-height: 18px; }
+        .aviso {
+            margin-top: 26px; background: rgba(255,255,255,0.13);
+            border-radius: 12px; padding: 14px 16px;
+            font-size: 0.72rem; line-height: 1.5; max-width: 320px;
+            display: none;
+        }
+        .aviso button {
+            margin-top: 12px; width: 100%; padding: 11px;
+            border: none; border-radius: 10px;
+            background: #16a34a; color: #fff;
+            font-weight: 700; font-size: 0.8rem; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <img class="logo" src="logo.png" alt="Logo"
+         onerror="this.src='https://alcaldiadeplaza.com/proteccion_animal/assets/img/logo.png'">
+    <h1>Sistema de Protección Animal</h1>
+    <p class="sub">Alcaldía de Guarenas<br>Municipio Ambrosio Plaza</p>
+    <div class="spinner"></div>
+    <div class="estado" id="estado">Cargando...</div>
+
+    <div class="aviso" id="aviso">
+        <strong>No se pudo conectar</strong><br>
+        Verifique su conexión a internet e intente nuevamente.
+        <button onclick="reintentar()">Reintentar</button>
+    </div>
+
+    <script>
+        // Respaldo mientras la app abre el servidor configurado.
+        const destino = 'https://alcaldiadeplaza.com/proteccion_animal/login2.php';
+        let intentos = 0;
+
+        function reintentar() {
+            intentos = 0;
+            document.getElementById('aviso').style.display = 'none';
+            document.getElementById('estado').textContent = 'Cargando...';
+            verificar();
+        }
+
+        async function verificar() {
+            intentos++;
+            try {
+                await fetch(destino, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+                document.getElementById('estado').textContent = 'Conectado. Abriendo...';
+                window.location.href = destino;
+            } catch (e) {
+                if (intentos >= 3) {
+                    document.getElementById('estado').textContent = '';
+                    document.getElementById('aviso').style.display = 'block';
+                } else {
+                    setTimeout(verificar, 1500);
+                }
+            }
+        }
+
+        setTimeout(verificar, 600);
+    </script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "proteccion-animal-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App movil - Sistema de Proteccion Animal, Alcaldia de Guarenas",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}

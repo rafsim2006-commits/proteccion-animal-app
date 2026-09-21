@@ -1,0 +1,19 @@
+{
+  "appId": "com.guarenas.proteccionanimal",
+  "appName": "Protección Animal",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "https://alcaldiadeplaza.com/proteccion_animal/login2.php",
+    "cleartext": false,
+    "allowNavigation": [
+      "alcaldiadeplaza.com",
+      "*.alcaldiadeplaza.com"
+    ]
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  }
+}
