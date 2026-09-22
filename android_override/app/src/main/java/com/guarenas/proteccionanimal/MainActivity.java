@@ -3,10 +3,13 @@ package com.guarenas.proteccionanimal;
 import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.webkit.CookieManager;
+import android.webkit.GeolocationPermissions;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -17,23 +20,28 @@ import android.webkit.WebViewClient;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 
 import com.getcapacitor.BridgeActivity;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * App de Proteccion Animal - Alcaldia de Guarenas.
  *
- * Resuelve los tres problemas tipicos de envolver una web PHP en una WebView:
- *   1. Seleccion de archivos (camara y galeria) -> onShowFileChooser
- *   2. Permisos en tiempo de ejecucion          -> CAMERA / imagenes
- *   3. Sesion PHP por cookies                   -> CookieManager + third-party
+ * - Camara nativa + galeria (FileProvider)
+ * - GPS / geolocalizacion del WebView
+ * - Sesion PHP por cookies
  */
 public class MainActivity extends BridgeActivity {
 
-    private static final int PETICION_ARCHIVO   = 1001;
-    private static final int PETICION_PERMISOS  = 1002;
+    private static final int PETICION_ARCHIVO  = 1001;
+    private static final int PETICION_PERMISOS = 1002;
 
     private ValueCallback<Uri[]> callbackArchivos;
+    private Uri uriFotoCamara;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -42,34 +50,34 @@ public class MainActivity extends BridgeActivity {
         WebView webView = getBridge().getWebView();
         WebSettings ajustes = webView.getSettings();
 
-        // --- JavaScript y almacenamiento local ---
         ajustes.setJavaScriptEnabled(true);
         ajustes.setDomStorageEnabled(true);
         ajustes.setDatabaseEnabled(true);
+        ajustes.setGeolocationEnabled(true);
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            ajustes.setGeolocationDatabasePath(getFilesDir().getPath());
+        }
+        ajustes.setAllowFileAccess(true);
+        ajustes.setAllowContentAccess(true);
+        ajustes.setMediaPlaybackRequiresUserGesture(false);
 
-        // --- Cookies: imprescindible para mantener la sesion PHP ---
         CookieManager cookieManager = CookieManager.getInstance();
         cookieManager.setAcceptCookie(true);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             cookieManager.setAcceptThirdPartyCookies(webView, true);
         }
 
-        // --- Ajuste de contenido ---
         ajustes.setLoadWithOverviewMode(true);
         ajustes.setUseWideViewPort(true);
         ajustes.setSupportZoom(false);
         ajustes.setBuiltInZoomControls(false);
-
-        // --- Ventanas ---
         ajustes.setSupportMultipleWindows(false);
         ajustes.setJavaScriptCanOpenWindowsAutomatically(true);
 
-        // --- Contenido mixto ---
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             ajustes.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         }
 
-        // --- Enlaces externos se abren en el navegador del telefono ---
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -92,8 +100,12 @@ public class MainActivity extends BridgeActivity {
             }
         });
 
-        // --- Camara y galeria ---
         webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onGeolocationPermissionsShowPrompt(
+                    String origin, GeolocationPermissions.Callback callback) {
+                callback.invoke(origin, true, false);
+            }
 
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
@@ -109,36 +121,71 @@ public class MainActivity extends BridgeActivity {
             public boolean onShowFileChooser(WebView webView,
                                              ValueCallback<Uri[]> filePathCallback,
                                              FileChooserParams fileChooserParams) {
-                // Cancelar una seleccion previa pendiente para evitar bloqueos
                 if (callbackArchivos != null) {
                     callbackArchivos.onReceiveValue(null);
                 }
                 callbackArchivos = filePathCallback;
 
+                boolean soloCamara = fileChooserParams != null
+                        && fileChooserParams.isCaptureEnabled();
+
                 try {
-                    Intent intent = fileChooserParams.createIntent();
-                    intent.addCategory(Intent.CATEGORY_OPENABLE);
-                    startActivityForResult(intent, PETICION_ARCHIVO);
+                    if (soloCamara) {
+                        startActivityForResult(crearIntentCamara(), PETICION_ARCHIVO);
+                    } else {
+                        startActivityForResult(crearChooser(fileChooserParams), PETICION_ARCHIVO);
+                    }
                     return true;
                 } catch (Exception e) {
                     callbackArchivos = null;
+                    uriFotoCamara = null;
                     return false;
                 }
             }
         });
 
-        // Pedir permisos al iniciar
         solicitarPermisos();
     }
 
-    /** Abre una URL en el navegador externo del telefono. */
+    private Intent crearIntentCamara() {
+        Intent camara = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        File foto = new File(getCacheDir(), "captura_" + System.currentTimeMillis() + ".jpg");
+        uriFotoCamara = FileProvider.getUriForFile(
+                this, getPackageName() + ".fileprovider", foto);
+        camara.putExtra(MediaStore.EXTRA_OUTPUT, uriFotoCamara);
+        camara.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+        List<ResolveInfo> apps = getPackageManager()
+                .queryIntentActivities(camara, PackageManager.MATCH_DEFAULT_ONLY);
+        for (ResolveInfo info : apps) {
+            grantUriPermission(
+                    info.activityInfo.packageName,
+                    uriFotoCamara,
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        }
+        return camara;
+    }
+
+    private Intent crearChooser(WebChromeClient.FileChooserParams params) {
+        Intent galeria = new Intent(Intent.ACTION_GET_CONTENT);
+        galeria.addCategory(Intent.CATEGORY_OPENABLE);
+        galeria.setType("image/*");
+        if (params != null && params.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
+            galeria.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        }
+
+        Intent chooser = Intent.createChooser(galeria, "Seleccionar foto");
+        chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Intent[]{ crearIntentCamara() });
+        return chooser;
+    }
+
     private void abrirFuera(String url) {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
         } catch (Exception ignored) { }
     }
 
-    /** Los enlaces que salen del sitio institucional se abren fuera de la app. */
     private boolean esEnlaceExterno(String url) {
         if (url == null) return false;
         if (url.startsWith("mailto:") || url.startsWith("tel:")
@@ -148,19 +195,26 @@ public class MainActivity extends BridgeActivity {
         return url.startsWith("http") && !url.contains("alcaldiadeplaza.com");
     }
 
-    /** Pide los permisos de camara y almacenamiento si aun no estan concedidos. */
     private void solicitarPermisos() {
-        java.util.List<String> faltantes = new java.util.ArrayList<String>();
+        List<String> faltantes = new ArrayList<String>();
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
                 != PackageManager.PERMISSION_GRANTED) {
             faltantes.add(Manifest.permission.CAMERA);
         }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            faltantes.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            faltantes.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+        }
 
         if (Build.VERSION.SDK_INT >= 33) {
-            if (ContextCompat.checkSelfPermission(this, "android.permission.READ_MEDIA_IMAGES")
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
                     != PackageManager.PERMISSION_GRANTED) {
-                faltantes.add("android.permission.READ_MEDIA_IMAGES");
+                faltantes.add(Manifest.permission.READ_MEDIA_IMAGES);
             }
         } else {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -184,22 +238,23 @@ public class MainActivity extends BridgeActivity {
             }
 
             Uri[] resultado = null;
-            if (resultCode == RESULT_OK && data != null) {
-                if (data.getClipData() != null) {
-                    // Varias imagenes seleccionadas
+            if (resultCode == RESULT_OK) {
+                if (data != null && data.getClipData() != null) {
                     int cantidad = data.getClipData().getItemCount();
                     resultado = new Uri[cantidad];
                     for (int i = 0; i < cantidad; i++) {
                         resultado[i] = data.getClipData().getItemAt(i).getUri();
                     }
-                } else if (data.getData() != null) {
-                    // Una sola imagen
+                } else if (data != null && data.getData() != null) {
                     resultado = new Uri[]{ data.getData() };
+                } else if (uriFotoCamara != null) {
+                    resultado = new Uri[]{ uriFotoCamara };
                 }
             }
 
             callbackArchivos.onReceiveValue(resultado);
             callbackArchivos = null;
+            uriFotoCamara = null;
             return;
         }
         super.onActivityResult(requestCode, resultCode, data);

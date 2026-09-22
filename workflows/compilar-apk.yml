@@ -1,0 +1,65 @@
+name: Compilar APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  compilar:
+    name: Generar APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar el codigo
+        uses: actions/checkout@v4
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Preparar plataforma Android
+        run: npx cap add android
+
+      - name: Sincronizar la app
+        run: npx cap sync android
+
+      - name: Aplicar permisos de camara, galeria y GPS
+        run: python3 scripts/aplicar-manifest.py android/app/src/main/AndroidManifest.xml
+
+      - name: Aplicar icono de la Alcaldia
+        run: python3 scripts/aplicar-iconos.py
+
+      - name: Copiar MainActivity personalizado
+        run: |
+          DEST="android/app/src/main/java/com/guarenas/proteccionanimal"
+          mkdir -p "$DEST"
+          cp "android_override/app/src/main/java/com/guarenas/proteccionanimal/MainActivity.java" "$DEST/MainActivity.java"
+          rm -f "android/app/src/main/java/com/getcapacitor/myapp/MainActivity.java"
+          rmdir "android/app/src/main/java/com/getcapacitor/myapp" 2>/dev/null || true
+          echo "MainActivity personalizado copiado."
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Dar permisos a Gradle
+        run: chmod +x android/gradlew
+
+      - name: Compilar APK
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Subir la APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: proteccion-animal-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 90
