@@ -23,7 +23,7 @@ jobs:
         run: npm install
 
       - name: Preparar plataforma Android
-        run: npx cap add android
+        run: npx cap add android || true
 
       - name: Sincronizar la app
         run: npx cap sync android
@@ -42,13 +42,28 @@ jobs:
           test -f android/app/src/main/res/drawable/logo_alcaldia.png
           grep -q 'android:icon="@drawable/logo_alcaldia"' android/app/src/main/AndroidManifest.xml
           echo "Icono verificado en el manifiesto."
-          ls -la android/app/src/main/res/drawable/logo_alcaldia.png
-          ls -la android/app/src/main/res/mipmap-xxhdpi/
 
       - name: Copiar MainActivity personalizado
         run: |
+          SRC="android_override/app/src/main/java/com/guarenas/proteccionanimal/MainActivity.java"
           DEST="android/app/src/main/java/com/guarenas/proteccionanimal"
+          test -f "$SRC"
           mkdir -p "$DEST"
-          cp "android_override/app/src/main/java/com/guarenas/proteccionanimal/MainActivity.java" "$DEST/MainActivity.java"
-          rm -f "android/app/src/main/java/com/getcapacitor/myapp/MainActivity.java"
-          rmdir "android/app/src/main/java/com/getcapacitor/myapp" 2>/d
+          cp "$SRC" "$DEST/MainActivity.java"
+          rm -rf android/app/src/main/java/com/getcapacitor
+
+      - name: Instalar Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Compilar
+        run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug --no-daemon
+
+      - name: Subir APK
+        uses: actions/upload-artifact@v5
+        with:
+          name: proteccion-animal-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 90
