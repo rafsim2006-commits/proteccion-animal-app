@@ -1,0 +1,54 @@
+name: Compilar APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  compilar:
+    name: Generar APK
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Descargar el codigo
+        uses: actions/checkout@v5
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Preparar plataforma Android
+        run: npx cap add android
+
+      - name: Sincronizar la app
+        run: npx cap sync android
+
+      - name: Aplicar permisos de camara, galeria y GPS
+        run: python3 scripts/aplicar-manifest.py android/app/src/main/AndroidManifest.xml
+
+      - name: Instalar Pillow para el icono
+        run: python3 -m pip install --user pillow
+
+      - name: Aplicar icono de la Alcaldia
+        run: python3 scripts/aplicar-iconos.py
+
+      - name: Verificar que el icono quedo instalado
+        run: |
+          test -f android/app/src/main/res/drawable/logo_alcaldia.png
+          grep -q 'android:icon="@drawable/logo_alcaldia"' android/app/src/main/AndroidManifest.xml
+          echo "Icono verificado en el manifiesto."
+          ls -la android/app/src/main/res/drawable/logo_alcaldia.png
+          ls -la android/app/src/main/res/mipmap-xxhdpi/
+
+      - name: Copiar MainActivity personalizado
+        run: |
+          DEST="android/app/src/main/java/com/guarenas/proteccionanimal"
+          mkdir -p "$DEST"
+          cp "android_override/app/src/main/java/com/guarenas/proteccionanimal/MainActivity.java" "$DEST/MainActivity.java"
+          rm -f "android/app/src/main/java/com/getcapacitor/myapp/MainActivity.java"
+          rmdir "android/app/src/main/java/com/getcapacitor/myapp" 2>/d
